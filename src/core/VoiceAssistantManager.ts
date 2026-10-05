@@ -7,7 +7,7 @@
 import { AppState } from './AppState';
 import { EventBus, Events } from './EventBus';
 import type { ExperimentType } from './ExperimentConfig';
-import { voiceNarrator } from './VoiceNarrator';
+import { voiceNarrator, VOICE_LANGUAGES } from './VoiceNarrator';
 import { Icons } from '../ui/Icons';
 
 export type AssistantMode = 'WIRING' | 'SCADA' | 'LADDER' | 'INSPECTOR' | 'GESTURES' | 'GENERAL';
@@ -331,6 +331,10 @@ export class VoiceAssistantManager {
           <div class="mentor-header-controls">
             <button class="mentor-ctrl-btn" id="btn-mentor-repeat" title="Repeat Voice Instruction (Now)">${Icons.rotateCcw({ size: 12 })} Repeat</button>
             <button class="mentor-ctrl-btn" id="btn-mentor-skip" title="Skip to Next Task">${Icons.skipForward({ size: 12 })} Next</button>
+            <label class="mentor-language-label" for="mentor-language-select">Voice</label>
+            <select class="mentor-language-select" id="mentor-language-select" aria-label="Voice language">
+              ${VOICE_LANGUAGES.map(({ code, label }) => `<option value="${code}"${code === 'en-US' ? ' selected' : ''}>${label}</option>`).join('')}
+            </select>
             <button class="mentor-ctrl-btn" id="btn-mentor-mute" title="Toggle Audio Voice">${Icons.volume2({ size: 13 })}</button>
             <button class="mentor-ctrl-btn min" id="btn-mentor-minimize" title="Minimize / Expand Mentor">${Icons.chevronDown({ size: 13 })}</button>
           </div>
@@ -363,6 +367,12 @@ export class VoiceAssistantManager {
 
     document.getElementById('btn-mentor-skip')?.addEventListener('click', () => {
       this.completeCurrentTask(true);
+    });
+
+    document.getElementById('mentor-language-select')?.addEventListener('change', (event) => {
+      const select = event.currentTarget as HTMLSelectElement;
+      voiceNarrator.setLanguage(select.value);
+      this.speakCurrentTask(false);
     });
 
     document.getElementById('btn-mentor-mute')?.addEventListener('click', () => {

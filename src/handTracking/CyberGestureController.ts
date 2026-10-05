@@ -16,7 +16,7 @@ import type { PumpEquipment } from '../equipment/PumpEquipment';
 import type { ConveyorEquipment } from '../equipment/ConveyorEquipment';
 import type { HandCursorVisualizer, CyberActionNode } from './HandCursorVisualizer';
 
-export type RecognizedPose = 'IDLE' | 'OPEN_PALM' | 'POINTING' | 'PINCH' | 'FIST_ESTOP' | 'LEVEL_SLIDER';
+export type RecognizedPose = 'IDLE' | 'OPEN_PALM' | 'POINTING' | 'PINCH' | 'FIST_ESTOP' | 'LEVEL_SLIDER' | 'TWO_HAND_ROTATE';
 
 export class CyberGestureController {
   private camera: THREE.Camera;
@@ -71,6 +71,10 @@ export class CyberGestureController {
 
 
 
+  private lastUIClickTime = 0;
+  private hoveredUIElement: HTMLElement | null = null;
+  private uiHoverStartTime = 0;
+
   /**
    * Main Hand Tracking Update step called on every camera frame from MediaPipe.
    */
@@ -99,8 +103,42 @@ export class CyberGestureController {
       return;
     }
 
+    // 3. Check for 2D Interactive UI Elements under finger (Modals, SCADA buttons, Docks, Top bar)
+    const hitUI = this.findHoveredUIElement(x, y);
+    if (hitUI) {
+      if (this.hoveredUIElement !== hitUI) {
+        this.hoveredUIElement = hitUI;
+        this.uiHoverStartTime = performance.now();
+      }
 
+      const rect = hitUI.getBoundingClientRect();
+      const screenPos = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      const rawText = hitUI.getAttribute('aria-label') || hitUI.getAttribute('title') || hitUI.innerText || hitUI.textContent || 'Button';
+      const cleanLabel = rawText.trim().replace(/\s+/g, ' ').slice(0, 24);
 
+      this.visualizer.setHoverTarget({
+        label: cleanLabel || 'UI Control',
+        type: 'equipment',
+        color: '#ff6b00',
+        actionHint: isPinching ? 'CLICKING...' : 'PINCH TO CLICK',
+        laserTarget: screenPos,
+      });
+
+      EventBus.emit('hand:targetLocked');
+
+      const now = performance.now();
+      const isDwellClick = now - this.uiHoverStartTime > 550; // Dwell auto-click fallback
+
+      if ((isPinching || isDwellClick) && now - this.lastUIClickTime > 380) {
+        this.lastUIClickTime = now;
+        this.uiHoverStartTime = now + 600;
+        this.triggerDOMClick(hitUI, x, y);
+      }
+      return;
+    } else {
+      this.hoveredUIElement = null;
+      this.uiHoverStartTime = 0;
+    }
 
     // 4. Raycast to 3D Equipment in the scene (active in SCADA / Operation mode)
     const isWiringActive = !AppState.wiringProgress.allCorrect;
@@ -137,6 +175,41 @@ export class CyberGestureController {
       this.visualizer.setHoverTarget(null);
       this.visualizer.setCyberSliderState(false, 0);
     }
+  }
+
+  private findHoveredUIElement(x: number, y: number): HTMLElement | null {
+    if (typeof document === 'undefined') return null;
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+
+    if (
+      el.id === 'three-canvas' ||
+      el.id === 'touch-canvas' ||
+      el.id === 'ui-overlay' ||
+      el.id === 'app' ||
+      el.id === 'camera-feed'
+    ) {
+      return null;
+    }
+
+    const interactive = el.closest(
+      'button, [role="button"], input, select, a, .modal-btn-primary, .modal-btn-secondary, .hmi-btn-tactile, .tool-pill-btn, .dock-pill-btn, .ctrl-btn, .quick-preset-btn, .alarm-tab, .mentor-ctrl-btn, .ladder-tab-btn, .rung-card, .ladder-btn-accent, .tool-icon-btn, .hmi-slider, .quiz-opt-btn'
+    ) as HTMLElement | null;
+
+    return interactive;
+  }
+
+  private triggerDOMClick(el: HTMLElement, x: number, y: number): void {
+    this.visualizer.addRipple(x, y, 65, '#ff6b00');
+    soundManager.playCyberToggle(1.1);
+
+    el.classList.add('active');
+    setTimeout(() => el.classList.remove('active'), 220);
+
+    el.focus();
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    el.click();
   }
 
   /**

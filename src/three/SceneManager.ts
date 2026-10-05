@@ -169,23 +169,39 @@ export class SceneManager {
     this.controls.update();
   }
 
-  rotateByDelta(dx: number, dy: number): void {
-    const offset = this.camera.position.clone().sub(this.controls.target);
-    
-    // Horizontal rotation (around world Y axis)
-    const angleX = -dx * 2.8;
-    offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), angleX);
+  /**
+   * AR Spatial Direct Product Hand Rotation Engine.
+   * Rotates the 3D product turntable directly in mid-air around its vertical axis.
+   */
+  rotateProduct(deltaYaw: number): void {
+    if (Math.abs(deltaYaw) > 0.0001) {
+      this.equipmentGroup.rotation.y += deltaYaw;
+    }
+  }
 
-    // Vertical rotation (around camera local right axis)
-    const right = new THREE.Vector3().crossVectors(this.camera.up, offset).normalize();
-    const angleY = -dy * 2.2;
-    offset.applyAxisAngle(right, angleY);
+  rotateByDelta(dx: number, dy: number, dAngle = 0, dDepth = 0): void {
+    // 1. Direct AR Product Yaw Rotation (model turntable turns directly with hands)
+    // - dx: Hands moving left/right horizontally
+    // - dAngle: Two hands tilting in a steering wheel / dial motion
+    // - dDepth: Moving one hand forward and pulling the other back
+    const deltaYaw = dx * 3.6 + dAngle * 2.6 - dDepth * 3.0;
+    if (Math.abs(deltaYaw) > 0.0001) {
+      this.equipmentGroup.rotation.y += deltaYaw;
+    }
 
-    // Ensure we don't flip upside down
-    const newPos = this.controls.target.clone().add(offset);
-    if (newPos.y > -0.2) {
-      this.camera.position.copy(newPos);
-      this.controls.update();
+    // 2. Vertical Camera Elevation Pitch Tilt (inspect top/bottom)
+    if (Math.abs(dy) > 0.0001) {
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      const right = new THREE.Vector3().crossVectors(this.camera.up, offset).normalize();
+      const angleY = -dy * 2.2;
+      offset.applyAxisAngle(right, angleY);
+
+      const newPos = this.controls.target.clone().add(offset);
+      if (newPos.y > -0.15 && newPos.y < 3.2) {
+        this.camera.position.copy(newPos);
+        this.camera.lookAt(this.controls.target);
+        this.controls.update();
+      }
     }
   }
 

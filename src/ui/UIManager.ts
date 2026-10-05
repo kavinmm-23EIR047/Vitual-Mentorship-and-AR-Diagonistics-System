@@ -9,7 +9,7 @@ import { EXPERIMENTS, type ExperimentType } from '../core/ExperimentConfig';
 import { alarmManager, type AlarmRecord } from '../core/AlarmManager';
 import type { TrainingStepDef } from '../wiring/WiringTrainingEngine';
 import { LadderLogicModal } from './LadderLogicModal';
-import { voiceNarrator } from '../core/VoiceNarrator';
+import { voiceNarrator, VOICE_LANGUAGES } from '../core/VoiceNarrator';
 import { voiceAssistantManager } from '../core/VoiceAssistantManager';
 import { Icons } from './Icons';
 
@@ -104,10 +104,12 @@ export class UIManager {
         </button>
 
         <!-- AI Voice Narrator Guide Indicator Pill -->
-        <button id="btn-toggle-voice" class="tool-pill-btn" title="Toggle AI Voice Instructor Guide (English)">
+        <label class="voice-language-control" title="Choose AI voice language">
           <span class="pill-icon">${Icons.mic({ size: 14 })}</span>
-          <span id="voice-status-text">Voice ON</span>
-        </button>
+          <select id="btn-toggle-voice" aria-label="AI voice language">
+            ${VOICE_LANGUAGES.map(({ code, label }) => `<option value="${code}"${code === 'en-US' ? ' selected' : ''}>${code === 'mute' ? 'Mute' : label}</option>`).join('')}
+          </select>
+        </label>
 
         <!-- SCADA Alarm & Event Log Indicator Pill -->
         <button id="btn-toggle-alarm-log" class="tool-pill-btn alarm-pill" title="Open SCADA Alarm &amp; Event Log">
@@ -663,9 +665,11 @@ export class UIManager {
     document.getElementById('btn-open-ladder')?.addEventListener('click', openLadder);
     document.getElementById('btn-dock-ladder')?.addEventListener('click', openLadder);
     document.getElementById('btn-mode-ladder')?.addEventListener('click', openLadder);
-    document.getElementById('btn-modal-ladder')?.addEventListener('click', () => {
+    document.getElementById('btn-modal-ladder')?.addEventListener('click', (e) => {
+      e?.stopPropagation();
       this.hideCompletionModal();
       openLadder();
+      voiceAssistantManager.setMode('LADDER');
     });
 
     // Hand Tracking Activation
@@ -680,21 +684,26 @@ export class UIManager {
     });
 
     // Voice Instructor UI & Handlers
-    const updateVoiceBtnState = (enabled: boolean) => {
-      const btn = document.getElementById('btn-toggle-voice');
-      const text = document.getElementById('voice-status-text');
-      if (btn) btn.classList.toggle('active', enabled);
-      if (text) text.textContent = enabled ? 'Voice ON' : 'Voice MUTED';
-    };
-
-    document.getElementById('btn-toggle-voice')?.addEventListener('click', () => {
-      const enabled = voiceNarrator.toggleVoice();
-      updateVoiceBtnState(enabled);
-      this.showToast('info', enabled ? 'AI Voice Instructor: ON' : 'AI Voice Instructor: Muted');
+    document.getElementById('btn-toggle-voice')?.addEventListener('change', (event) => {
+      const select = event.currentTarget as HTMLSelectElement;
+      voiceNarrator.setLanguage(select.value);
+      const enabled = voiceNarrator.isVoiceEnabled();
+      select.closest('.voice-language-control')?.classList.toggle('active', enabled);
+      document.querySelectorAll<HTMLSelectElement>('.mentor-language-select').forEach((el) => {
+        el.value = enabled ? voiceNarrator.getLanguage() : 'mute';
+      });
+      if (enabled) voiceAssistantManager.speakCurrentTask(false);
+      this.showToast('info', enabled ? `AI Voice: ${VOICE_LANGUAGES.find((item) => item.code === select.value)?.label}` : 'AI Voice: Muted');
     });
 
     EventBus.on('voice:stateChanged', (data: { enabled: boolean }) => {
-      updateVoiceBtnState(data.enabled);
+      document.querySelectorAll<HTMLSelectElement>('#btn-toggle-voice, .mentor-language-select').forEach((el) => {
+        el.value = data.enabled ? voiceNarrator.getLanguage() : 'mute';
+      });
+    });
+
+    EventBus.on('voice:translationError', () => {
+      this.showToast('error', 'Translation failed. Check your connection or free translation limit, then try again.');
     });
 
     // Replay wiring voice guide on demand
@@ -906,9 +915,11 @@ export class UIManager {
         this.showToast('success', 'Circuits connected! Starting process simulation...');
         setTimeout(() => {
           EventBus.emit(Events.PROCESS_START);
+          voiceAssistantManager.setMode('SCADA');
         }, 600);
       } else {
         EventBus.emit(Events.PROCESS_START);
+        voiceAssistantManager.setMode('SCADA');
         this.showToast('success', 'Process simulation active');
       }
       this.hideCompletionModal();
@@ -919,17 +930,23 @@ export class UIManager {
       this.showToast('info', 'Process halted');
     });
 
-    document.getElementById('btn-modal-start')?.addEventListener('click', () => {
+    document.getElementById('btn-modal-start')?.addEventListener('click', (e) => {
+      e?.stopPropagation();
       if (alarmManager.isEStopLatched()) {
         this.showToast('error', 'Cannot start: Release Emergency Stop first!');
         return;
       }
+      this.hideCompletionModal();
       EventBus.emit(Events.PROCESS_START);
-      this.hideCompletionModal();
+      voiceAssistantManager.setMode('SCADA');
+      this.showToast('success', 'Process simulation active');
     });
-    document.getElementById('btn-modal-restart')?.addEventListener('click', () => {
-      EventBus.emit('training:requestReset');
+    document.getElementById('btn-modal-restart')?.addEventListener('click', (e) => {
+      e?.stopPropagation();
       this.hideCompletionModal();
+      EventBus.emit('training:requestReset');
+      voiceAssistantManager.setMode('WIRING');
+      this.showToast('info', 'Wiring reset to Step 1');
     });
 
     // Training Engine Events
@@ -1426,10 +1443,18 @@ export class UIManager {
 
     // 3. Traffic
     const phase = AppState.trafficPhase;
-    this.setStatusValue('st-traffic-signal', phase === 'MAIN_GREEN' ? 'GREEN (GO)' : phase === 'MAIN_YELLOW' ? 'YELLOW (CLEAR)' : 'RED (STOP)', phase === 'MAIN_GREEN' ? 'on' : phase === 'MAIN_YELLOW' ? 'warn' : 'fault');
-    this.setStatusValue('st-traffic-ped', AppState.pedWalkPhase === 'WALK' ? 'WALK (CROSS)' : AppState.pedWalkPhase === 'FLASHING' ? 'FLASHING' : "DON'T WALK", AppState.pedWalkPhase === 'WALK' ? 'on' : 'off');
+    this.setStatusValue('st-traffic-signal', phase === 'MAIN_GREEN' ? 'GREEN (GO)' : (phase === 'MAIN_YELLOW' || phase === 'CROSS_YELLOW') ? 'YELLOW (CLEAR)' : 'RED (STOP)', phase === 'MAIN_GREEN' ? 'on' : (phase === 'MAIN_YELLOW' || phase === 'CROSS_YELLOW') ? 'warn' : 'fault');
+    this.setStatusValue('st-traffic-ped', AppState.pedWalkPhase === 'WALK' ? 'WALK (CROSS)' : AppState.pedWalkPhase === 'FLASHING' ? 'FLASHING' : "DON'T WALK", AppState.pedWalkPhase === 'WALK' ? 'on' : AppState.pedWalkPhase === 'FLASHING' ? 'warn' : 'off');
     this.setStatusValue('st-traffic-loop', AppState.vehicleDetected ? 'VEHICLE DETECTED' : 'NO CAR', AppState.vehicleDetected ? 'warn' : 'on');
     this.setStatusValue('st-traffic-timer', `${AppState.trafficPhaseTimer}s Remaining`, '');
+
+    const lampRed = document.getElementById('lamp-traffic-red');
+    const lampYel = document.getElementById('lamp-traffic-yel');
+    const lampGrn = document.getElementById('lamp-traffic-grn');
+    if (lampRed) lampRed.classList.toggle('on', phase === 'MAIN_RED' || phase === 'ALL_RED' || phase === 'CROSS_YELLOW');
+    if (lampYel) lampYel.classList.toggle('on', phase === 'MAIN_YELLOW');
+    if (lampGrn) lampGrn.classList.toggle('on', phase === 'MAIN_GREEN');
+
     const carTag = document.getElementById('tag-vehicle-count');
     if (carTag) carTag.textContent = `${AppState.trafficVehiclesPassed} CARS`;
 

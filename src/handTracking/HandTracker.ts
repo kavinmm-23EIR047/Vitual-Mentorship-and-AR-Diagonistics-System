@@ -24,6 +24,8 @@ export class HandTracker {
   private isRunning = false;
   private isProcessingFrame = false;
   private lastTwoHandCenter: { x: number; y: number } | null = null;
+  private lastTwoHandAngle: number | null = null;
+  private lastTwoHandDepth: number | null = null;
   private animFrameId: number | null = null;
 
   private indexSmoother = new PointerSmoother(0.35);
@@ -117,26 +119,76 @@ export class HandTracker {
   private onResults(results: HandResults): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        if (results.multiHandLandmarks.length >= 2) {
-          const first = results.multiHandLandmarks[0][8];
-          const second = results.multiHandLandmarks[1][8];
-          const firstX = (1 - first.x) * w;
-          const firstY = first.y * h;
-          const secondX = (1 - second.x) * w;
-          const secondY = second.y * h;
-          const center = { x: (firstX + secondX) / 2, y: (firstY + secondY) / 2 };
-          EventBus.emit('hand:twoHandMove', {
-            centerX: center.x,
-            centerY: center.y,
-            deltaX: this.lastTwoHandCenter ? center.x - this.lastTwoHandCenter.x : 0,
-            deltaY: this.lastTwoHandCenter ? center.y - this.lastTwoHandCenter.y : 0,
-            distance: Math.hypot(firstX - secondX, firstY - secondY),
-          });
-          this.lastTwoHandCenter = center;
-        } else {
-          this.lastTwoHandCenter = null;
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+      const numHands = results.multiHandLandmarks.length;
+
+      if (numHands >= 2) {
+        const lm0 = results.multiHandLandmarks[0];
+        const lm1 = results.multiHandLandmarks[1];
+
+        // Hand A stable palm position (wrist lm[0] and middle MCP lm[9])
+        const hA_x = (1 - (lm0[0].x + (lm0[9] ? lm0[9].x : lm0[0].x)) / 2) * w;
+        const hA_y = ((lm0[0].y + (lm0[9] ? lm0[9].y : lm0[0].y)) / 2) * h;
+        const hA_z = ((lm0[0].z + (lm0[9] ? lm0[9].z : lm0[0].z)) / 2);
+
+        // Hand B stable palm position
+        const hB_x = (1 - (lm1[0].x + (lm1[9] ? lm1[9].x : lm1[0].x)) / 2) * w;
+        const hB_y = ((lm1[0].y + (lm1[9] ? lm1[9].y : lm1[0].y)) / 2) * h;
+        const hB_z = ((lm1[0].z + (lm1[9] ? lm1[9].z : lm1[0].z)) / 2);
+
+        // Reliably sort by screen X so leftHand is ALWAYS on the left and rightHand on the right.
+        // This prevents 180° angle flips when MediaPipe switches hand array order between frames.
+        const leftHand = hA_x <= hB_x ? { x: hA_x, y: hA_y, z: hA_z } : { x: hB_x, y: hB_y, z: hB_z };
+        const rightHand = hA_x <= hB_x ? { x: hB_x, y: hB_y, z: hB_z } : { x: hA_x, y: hA_y, z: hA_z };
+
+        const centerX = (leftHand.x + rightHand.x) / 2;
+        const centerY = (leftHand.y + rightHand.y) / 2;
+
+        // Angle between the two hands in screen plane (steer angle in [-PI/2, PI/2])
+        const currentAngle = Math.atan2(rightHand.y - leftHand.y, Math.max(10, rightHand.x - leftHand.x));
+        // Push-pull depth differential between left and right hand
+        const currentDepthDiff = (rightHand.z - leftHand.z);
+
+        if (this.lastTwoHandCenter !== null && this.lastTwoHandAngle !== null) {
+          const rawDeltaX = centerX - this.lastTwoHandCenter.x;
+          const rawDeltaY = centerY - this.lastTwoHandCenter.y;
+          let rawDeltaAngle = currentAngle - this.lastTwoHandAngle;
+
+          // Normalize angle delta
+          if (rawDeltaAngle > Math.PI) rawDeltaAngle -= Math.PI * 2;
+          if (rawDeltaAngle < -Math.PI) rawDeltaAngle += Math.PI * 2;
+
+          let rawDeltaDepth = this.lastTwoHandDepth !== null ? (currentDepthDiff - this.lastTwoHandDepth) : 0;
+
+          // Deadband filter to eliminate camera sensor micro-jitter
+          const deltaX = Math.abs(rawDeltaX) > 0.8 ? rawDeltaX : 0;
+          const deltaY = Math.abs(rawDeltaY) > 0.8 ? rawDeltaY : 0;
+          const deltaAngle = Math.abs(rawDeltaAngle) > 0.005 ? rawDeltaAngle : 0;
+          const deltaDepth = Math.abs(rawDeltaDepth) > 0.003 ? rawDeltaDepth : 0;
+
+          if (deltaX !== 0 || deltaY !== 0 || deltaAngle !== 0 || deltaDepth !== 0) {
+            EventBus.emit('hand:twoHandMove', {
+              centerX,
+              centerY,
+              deltaX,
+              deltaY,
+              deltaAngle,
+              deltaDepth,
+              angle: currentAngle,
+              leftHand,
+              rightHand,
+            });
+          }
         }
+
+        this.lastTwoHandCenter = { x: centerX, y: centerY };
+        this.lastTwoHandAngle = currentAngle;
+        this.lastTwoHandDepth = currentDepthDiff;
+      } else {
+        this.lastTwoHandCenter = null;
+        this.lastTwoHandAngle = null;
+        this.lastTwoHandDepth = null;
+      }
       const landmarks = results.multiHandLandmarks[0];
       this.rawLandmarks = landmarks;
 
@@ -220,11 +272,14 @@ export class HandTracker {
           isPinching: this.isPinching,
           pinchDist: rawPinchDist,
           landmarks,
+          numHands,
         });
       }
     } else {
       if (this.lastFingerPos) {
         this.lastTwoHandCenter = null;
+        this.lastTwoHandAngle = null;
+        this.lastTwoHandDepth = null;
         this.lastFingerPos = null;
         this.lastThumbPos = null;
         this.isPinching = false;

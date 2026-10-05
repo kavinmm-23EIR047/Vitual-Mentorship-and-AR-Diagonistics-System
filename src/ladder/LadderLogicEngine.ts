@@ -186,7 +186,7 @@ export class LadderLogicEngine {
     const phase = AppState.trafficPhase;
     const isGreen = phase === 'MAIN_GREEN';
     const isYellow = phase === 'MAIN_YELLOW';
-    const isRed = phase === 'MAIN_RED' || phase === 'ALL_RED';
+    const isRed = phase === 'MAIN_RED' || phase === 'ALL_RED' || phase === 'CROSS_YELLOW';
     const isPedWalk = AppState.pedWalkPhase === 'WALK' || AppState.pedWalkPhase === 'FLASHING';
     const isLoopActive = AppState.vehicleDetected;
     const isPedCall = AppState.pedCallRequested;

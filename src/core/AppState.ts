@@ -37,7 +37,7 @@ export interface CompletedConnection {
 }
 
 // --- Traffic Light Types ---
-export type TrafficPhase = 'MAIN_GREEN' | 'MAIN_YELLOW' | 'MAIN_RED' | 'ALL_RED';
+export type TrafficPhase = 'MAIN_GREEN' | 'MAIN_YELLOW' | 'MAIN_RED' | 'ALL_RED' | 'CROSS_YELLOW';
 export type PedWalkPhase = 'DONT_WALK' | 'WALK' | 'FLASHING';
 
 // --- Robotic Types ---

@@ -19,6 +19,7 @@ interface EquipmentCallout {
   name: string;
   sub?: string;
   worldPos: THREE.Vector3;
+  localPos: THREE.Vector3;
   element: HTMLElement;
   type: string;
 }
@@ -35,6 +36,7 @@ export class TouchFeedbackVisualizer {
   private calloutsVisible = true;
 
   private camera: THREE.Camera | null = null;
+  private equipmentGroup: THREE.Group | null = null;
   private sourceWorldPos: THREE.Vector3 | null = null;
   private targetWorldPos: THREE.Vector3 | null = null;
   private labelsVisible = false;
@@ -77,6 +79,10 @@ export class TouchFeedbackVisualizer {
     this.camera = camera;
   }
 
+  setEquipmentGroup(group: THREE.Group): void {
+    this.equipmentGroup = group;
+  }
+
   /** Add persistent 3D equipment callout badge */
   addEquipmentCallout(id: string, name: string, sub: string, worldPos: THREE.Vector3, type = 'default'): void {
     const el = document.createElement('div');
@@ -90,7 +96,7 @@ export class TouchFeedbackVisualizer {
       </div>
     `;
     this.labelContainer.appendChild(el);
-    this.callouts.push({ id, name, sub, worldPos, element: el, type });
+    this.callouts.push({ id, name, sub, worldPos, localPos: worldPos.clone(), element: el, type });
   }
 
   setCalloutsVisible(visible: boolean): void {
@@ -211,7 +217,10 @@ export class TouchFeedbackVisualizer {
     // 3. Project equipment callouts only if visible
     if (this.camera && this.calloutsVisible) {
       for (const callout of this.callouts) {
-        const p = this.project3DToScreen(callout.worldPos, this.camera);
+        const currentPos = this.equipmentGroup
+          ? this.equipmentGroup.localToWorld(callout.localPos.clone())
+          : callout.worldPos;
+        const p = this.project3DToScreen(currentPos, this.camera);
         if (p) {
           callout.element.style.left = `${p.x}px`;
           callout.element.style.top = `${p.y}px`;

@@ -77,6 +77,7 @@ const interaction = new InteractionManager(sceneManager.camera);
 const wireRenderer = new WireRenderer();
 const touchVisualizer = new TouchFeedbackVisualizer(touchCanvas, overlay);
 touchVisualizer.setCamera(sceneManager.camera);
+touchVisualizer.setEquipmentGroup(sceneManager.equipmentGroup);
 
 const handTracker = new HandTracker();
 const handVisualizer = new HandCursorVisualizer(touchCanvas);
@@ -805,6 +806,7 @@ EventBus.on(Events.FINGER_MOVE, (data: {
   isPinching: boolean;
   pinchDist: number;
   landmarks?: any[];
+  numHands?: number;
 }) => {
   const mode = placementManager.getMode();
   // 1. Update Holographic Hand Cursor Visualizer
@@ -815,6 +817,11 @@ EventBus.on(Events.FINGER_MOVE, (data: {
     data.isPinching,
     data.landmarks
   );
+
+  if (data.numHands && data.numHands >= 2) {
+    handVisualizer.setRecognizedPose('TWO_HAND_ROTATE');
+    return;
+  }
 
   // 2. Feed Cyber Gesture Controller (Raycasting & Poses)
   cyberGestureController.processHandFrame(data);
@@ -909,19 +916,20 @@ EventBus.on(Events.HAND_LOST, () => {
   handTargetHoverSince = 0;
   lastHandX = null;
   lastHandY = null;
-  lastTwoHandDistance = null;
+
 });
 
-// Native two-hand rotate/scale when two index fingertips are tracked.
-EventBus.on('hand:twoHandMove', (data: { centerX: number; centerY: number; deltaX: number; deltaY: number; distance: number }) => {
-  if (placementManager.getMode() !== 'ROTATE_RIG') return;
-  if (lastTwoHandDistance !== null) {
-    // Two tracked index fingertips orbit the whole station and spread/pinch zooms it.
-    sceneManager.rotateByDelta(data.deltaX / window.innerWidth, data.deltaY / window.innerHeight);
-    const scale = data.distance / lastTwoHandDistance;
-    if (Number.isFinite(scale) && scale > 0.5 && scale < 2) sceneManager.zoom(1 / scale);
+// Clean two-hand 3D orbit rotation (supports spatial drag and steering wheel motion)
+EventBus.on('hand:twoHandMove', (data: { centerX: number; centerY: number; deltaX: number; deltaY: number; deltaAngle?: number; deltaDepth?: number }) => {
+  const dx = data.deltaX / window.innerWidth;
+  const dy = data.deltaY / window.innerHeight;
+  const dAngle = data.deltaAngle || 0;
+  const dDepth = data.deltaDepth || 0;
+  if (Math.hypot(dx, dy) > 0.0001 || Math.abs(dAngle) > 0.0005 || Math.abs(dDepth) > 0.0005) {
+    sceneManager.rotateByDelta(dx, dy, dAngle, dDepth);
+
   }
-  lastTwoHandDistance = data.distance;
+
 });
 
 // 3D Navigation D-Pad & Zoom Gizmo Handlers
@@ -980,6 +988,8 @@ EventBus.on('ui:toggleAR', async () => {
 // ============================================================
 sceneManager.onUpdate((dt) => {
   plc.update(dt);
+  plc.updateTerminalWorldPositions();
+  terminalManager.updateWorldPositions();
   terminalManager.update(dt);
   componentInspector.update(dt);
 

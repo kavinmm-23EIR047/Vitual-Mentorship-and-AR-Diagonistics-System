@@ -51,6 +51,7 @@ export class TrafficEquipment {
   private pedestrianProgress = 0;
   private pedestrianWalking = false;
   private pedestrianClock = 0;
+  private pedestrianDirection = 1;
 
   // Terminal Objects for PLC Wiring
   terminalPedButton: THREE.Object3D;
@@ -517,7 +518,14 @@ export class TrafficEquipment {
         this.redMat1.emissive.setHex(0xef4444);
         this.redMat1.emissiveIntensity = 2.4;
         this.greenMat2.emissive.setHex(0x10b981);
-        this.greenMat2.emissiveIntensity = 2.2;
+        this.greenMat2.emissiveIntensity = 2.4;
+        break;
+
+      case 'CROSS_YELLOW':
+        this.redMat1.emissive.setHex(0xef4444);
+        this.redMat1.emissiveIntensity = 2.4;
+        this.yellowMat2.emissive.setHex(0xf59e0b);
+        this.yellowMat2.emissiveIntensity = 2.4;
         break;
 
       case 'ALL_RED':
@@ -535,15 +543,14 @@ export class TrafficEquipment {
     if (phase === 'WALK' || phase === 'FLASHING') {
       if (!wasPermitted) {
         this.pedestrianProgress = 0;
-        this.pedestrian.position.x = this.pedestrianStartX;
       }
       this.pedestrianWalking = true;
     } else {
       this.pedestrianWalking = false;
-      // A new walk cycle always begins from the curb, even if the previous
-      // signal ended before the model reached the far side.
-      this.pedestrianProgress = 0;
-      this.pedestrian.position.x = this.pedestrianStartX;
+      if (this.pedestrianProgress >= 0.88) {
+        this.pedestrianDirection = -this.pedestrianDirection;
+        this.pedestrianProgress = 0;
+      }
     }
 
     if (phase === 'WALK') {
@@ -615,10 +622,14 @@ export class TrafficEquipment {
 
     // Walk across the zebra crossing only while the pedestrian signal permits it.
     if (this.pedestrianWalking && this.pedestrianProgress < 1) {
-      this.pedestrianProgress = Math.min(1, this.pedestrianProgress + dt / 5.2);
+      this.pedestrianProgress = Math.min(1, this.pedestrianProgress + dt / 4.8);
     }
     const walkEase = this.pedestrianProgress * this.pedestrianProgress * (3 - 2 * this.pedestrianProgress);
-    this.pedestrian.position.x = THREE.MathUtils.lerp(this.pedestrianStartX, this.pedestrianEndX, walkEase);
+    const startX = this.pedestrianDirection === 1 ? this.pedestrianStartX : this.pedestrianEndX;
+    const endX = this.pedestrianDirection === 1 ? this.pedestrianEndX : this.pedestrianStartX;
+    this.pedestrian.position.x = THREE.MathUtils.lerp(startX, endX, walkEase);
+    this.pedestrian.rotation.y = this.pedestrianDirection === 1 ? -Math.PI / 2 : Math.PI / 2;
+
     const walkingNow = this.pedestrianWalking && this.pedestrianProgress < 1;
     const stride = walkingNow ? Math.sin(this.pedestrianClock * 8.5) * 0.48 : 0;
     this.pedestrianLegs[0].rotation.x = stride;

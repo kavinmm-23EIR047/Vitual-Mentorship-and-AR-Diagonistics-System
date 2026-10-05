@@ -14,15 +14,24 @@ export interface NarrationScript {
   category: 'WIRING' | 'SIMULATION' | 'LADDER' | 'ALARM' | 'SYSTEM';
 }
 
+export const VOICE_LANGUAGES = [
+  { code: 'mute', label: 'Mute' },
+  { code: 'en-US', label: 'English' },
+  { code: 'ta-IN', label: 'தமிழ்' },
+] as const;
+
 export class VoiceNarrator {
   private static instance: VoiceNarrator;
   private synth: SpeechSynthesis | null = null;
   private selectedVoice: SpeechSynthesisVoice | null = null;
+  private language = 'en-US';
   private isEnabled = true;
   private isSpeaking = false;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
   private subtitleEl: HTMLElement | null = null;
   private subtitleTimer: number | null = null;
+  private speechRequestId = 0;
+  private translationCache = new Map<string, string>();
 
   private constructor() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -46,6 +55,20 @@ export class VoiceNarrator {
   private initVoice(): void {
     if (!this.synth) return;
     const voices = this.synth.getVoices();
+    const exactLanguageVoice = voices.find((voice) => voice.lang.toLowerCase() === this.language.toLowerCase());
+    if (exactLanguageVoice) {
+      this.selectedVoice = exactLanguageVoice;
+      return;
+    }
+    const languageVoice = voices.find((voice) => voice.lang.toLowerCase().startsWith(this.language.slice(0, 2)));
+    if (languageVoice) {
+      this.selectedVoice = languageVoice;
+      return;
+    }
+    if (this.language !== 'en-US') {
+      this.selectedVoice = null;
+      return;
+    }
     // Prioritize natural English voices
     const preferredVoices = [
       'Google US English',
@@ -67,6 +90,24 @@ export class VoiceNarrator {
     if (!this.selectedVoice && voices.length > 0) {
       this.selectedVoice = voices.find((v) => v.lang.startsWith('en')) || voices[0];
     }
+  }
+
+  public getLanguage(): string { return this.language; }
+
+  public setLanguage(language: string): void {
+    if (language === 'mute') {
+      if (this.isEnabled) this.toggleVoice();
+      return;
+    }
+    if (!VOICE_LANGUAGES.some((item) => item.code === language)) return;
+    if (!this.isEnabled) this.toggleVoice();
+    this.language = language;
+    this.initVoice();
+    this.synth?.cancel();
+    this.currentUtterance = null;
+    this.isSpeaking = false;
+    this.updateWaveAnimation(false);
+    EventBus.emit('voice:languageChanged', { language });
   }
 
   private createSubtitleUI(): void {
@@ -127,39 +168,110 @@ export class VoiceNarrator {
     });
   }
 
-  public speak(text: string, category: 'WIRING' | 'SIMULATION' | 'LADDER' | 'ALARM' | 'SYSTEM' = 'SYSTEM'): void {
-    this.showSubtitle(text);
-
+  public speak(text: string, _category: 'WIRING' | 'SIMULATION' | 'LADDER' | 'ALARM' | 'SYSTEM' = 'SYSTEM'): void {
+    const requestId = ++this.speechRequestId;
+    this.synth?.cancel();
+    this.isSpeaking = false;
+    this.updateWaveAnimation(false);
     if (!this.isEnabled || !this.synth) return;
 
-    // Cancel current utterance to avoid backlog
-    this.synth.cancel();
+    void this.translateText(text, this.language).then((spokenText) => {
+      if (requestId !== this.speechRequestId || !this.isEnabled || !this.synth) return;
+      this.showSubtitle(spokenText);
+      const utterance = new SpeechSynthesisUtterance(spokenText);
+      if (this.selectedVoice) utterance.voice = this.selectedVoice;
+      utterance.rate = 1.02;
+      utterance.pitch = 1.0;
+      utterance.lang = this.language;
+      utterance.onstart = () => {
+        this.isSpeaking = true;
+        this.updateWaveAnimation(true);
+      };
+      utterance.onend = () => {
+        this.isSpeaking = false;
+        this.updateWaveAnimation(false);
+      };
+      utterance.onerror = () => {
+        this.isSpeaking = false;
+        this.updateWaveAnimation(false);
+      };
+      this.currentUtterance = utterance;
+      this.synth.speak(utterance);
+    }).catch(() => {
+      if (requestId !== this.speechRequestId) return;
+      this.showSubtitle('Translation is unavailable. Check your internet connection and try again.');
+      EventBus.emit('voice:translationError', { language: this.language });
+    });
+  }
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    if (this.selectedVoice) {
-      utterance.voice = this.selectedVoice;
+  private async translateText(text: string, language: string): Promise<string> {
+    if (language === 'en-US') return text;
+    const target = language.slice(0, 2);
+    const pieces = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+    const translated: string[] = [];
+    for (const piece of pieces) {
+      const key = `${target}:${piece.trim()}`;
+      let result = this.translationCache.get(key);
+      if (!result) {
+        try { result = localStorage.getItem(`arplc-translation:${key}`) || undefined; } catch { /* storage may be disabled */ }
+      }
+      if (!result) {
+        // MyMemory's free endpoint limits each query to 500 bytes.
+        if (new TextEncoder().encode(piece).length > 480) {
+          const words = piece.split(/\s+/);
+          const chunks: string[] = [];
+          let chunk = '';
+          for (const word of words) {
+            if (chunk && new TextEncoder().encode(`${chunk} ${word}`).length > 450) {
+              chunks.push(chunk);
+              chunk = word;
+            } else chunk = chunk ? `${chunk} ${word}` : word;
+          }
+          if (chunk) chunks.push(chunk);
+          const converted: string[] = [];
+          for (const part of chunks) converted.push(await this.fetchTranslation(part, target));
+          result = converted.join(' ');
+        } else {
+          result = await this.fetchTranslation(piece, target);
+        }
+        this.translationCache.set(key, result);
+        try { localStorage.setItem(`arplc-translation:${key}`, result); } catch { /* storage may be full */ }
+      }
+      translated.push(result);
     }
-    utterance.rate = 1.02;
-    utterance.pitch = 1.0;
-    utterance.lang = 'en-US';
+    return translated.join(' ').replace(/\s+([,.!?])/g, '$1');
+  }
 
-    utterance.onstart = () => {
-      this.isSpeaking = true;
-      this.updateWaveAnimation(true);
-    };
+  private async fetchTranslation(text: string, target: string): Promise<string> {
+    const providers = [
+      async () => {
+        const response = await fetch('https://translate.argosopentech.com/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ q: text, source: 'en', target }),
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!response.ok) throw new Error(`LibreTranslate returned ${response.status}`);
+        const data = await response.json() as { translatedText?: string };
+        return data.translatedText?.trim() || '';
+      },
+      async () => {
+        const query = new URLSearchParams({ q: text, langpair: `en|${target}`, mt: '1' });
+        const response = await fetch(`https://api.mymemory.translated.net/get?${query}`, { signal: AbortSignal.timeout(12000) });
+        if (!response.ok) throw new Error(`MyMemory returned ${response.status}`);
+        const data = await response.json() as { responseStatus?: number; responseData?: { translatedText?: string } };
+        if (data.responseStatus !== 200) throw new Error('MyMemory rejected the translation request');
+        return data.responseData?.translatedText?.trim() || '';
+      },
+    ];
 
-    utterance.onend = () => {
-      this.isSpeaking = false;
-      this.updateWaveAnimation(false);
-    };
-
-    utterance.onerror = () => {
-      this.isSpeaking = false;
-      this.updateWaveAnimation(false);
-    };
-
-    this.currentUtterance = utterance;
-    this.synth.speak(utterance);
+    for (const request of providers) {
+      try {
+        const result = await request();
+        if (result && result.toLowerCase() !== text.trim().toLowerCase()) return result;
+      } catch { /* Try the next free translation provider. */ }
+    }
+    throw new Error('No translation provider returned translated text');
   }
 
   public speakWiringStep(exp: ExperimentType, stepIndex: number): void {
