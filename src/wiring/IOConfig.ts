@@ -101,6 +101,19 @@ export const TANK_REQUIRED_CONNECTIONS: ConnectionDef[] = [
   { source: 'Q0.1', target: 'VALVE_CONTROL', label: 'DO1 (%Q0.1) → Valve Control', type: 'OUTPUT' },
 ];
 
+// Backward-compatible names used by the original single-tank training modules.
+export const REQUIRED_CONNECTIONS = TANK_REQUIRED_CONNECTIONS;
+
+export function getExpectedTarget(source: string): { target: string; label: string } | null {
+  const terminal = PLC_TERMINALS.find((item) => item.id === source);
+  if (!terminal) return null;
+  const required = TANK_REQUIRED_CONNECTIONS.find((item) => item.source === source);
+  return {
+    target: required?.target ?? terminal.target,
+    label: required?.label ?? terminal.label,
+  };
+}
+
 // --- Required Connections for Experiment 2 (Conveyor Sorting) ---
 export const CONVEYOR_REQUIRED_CONNECTIONS: ConnectionDef[] = [
   { source: 'I0.0', target: 'CONVEYOR_OPTICAL_SENSOR', label: 'DI0 (%I0.0) → Optical Sensor OUT', type: 'INPUT' },

@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { LAYOUT } from '../core/constants';
+import { AppState } from '../core/AppState';
 import type { TankEquipment } from '../equipment/TankEquipment';
 import type { PLCEquipment } from '../equipment/PLCEquipment';
 import type { LevelIndicatorTower } from '../equipment/LevelIndicatorTower';

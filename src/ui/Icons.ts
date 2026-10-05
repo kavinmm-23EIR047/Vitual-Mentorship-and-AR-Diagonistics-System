@@ -73,7 +73,9 @@ export type IconName =
   | 'shuffle'
   | 'layers'
   | 'tag'
-  | 'pin';
+  | 'pin'
+  | 'minimize2'
+  | 'settings';
 
 export interface IconOptions {
   size?: number | string;
@@ -108,6 +110,8 @@ const SVG_PATHS: Record<IconName, string> = {
   shuffle: `<polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line>`,
   tag: `<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line>`,
   pin: `<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle>`,
+  minimize2: `<polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line>`,
+  settings: `<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.7 2.94-.08-.02a1.7 1.7 0 0 0-1.76.6l-.05.07h-3.4l-.02-.08a1.7 1.7 0 0 0-1.3-1.2l-.08-.02-1.7-2.94.06-.06A1.7 1.7 0 0 0 10.1 15l-.08-.04v-3.4l.08-.02a1.7 1.7 0 0 0 1.2-1.3l.02-.08 2.94-1.7.06.06a1.7 1.7 0 0 0 1.88.34l.06-.04h3.4l.02.08a1.7 1.7 0 0 0 1.3 1.2l.08.02v3.4l-.08.02a1.7 1.7 0 0 0-1.2 1.3z"></path>`,
 
   // Audio / Speech
   mic: `<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line>`,

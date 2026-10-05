@@ -70,6 +70,7 @@ export const Events = {
   PROCESS_START: 'process:start',
   PROCESS_STOP: 'process:stop',
   PROCESS_RESET: 'process:reset',
+  SETPOINT_CHANGED: 'setpoint:changed',
   TANK_LEVEL_CHANGED: 'tank:levelChanged',
   PUMP_STATE_CHANGED: 'pump:stateChanged',
   VALVE_STATE_CHANGED: 'valve:stateChanged',

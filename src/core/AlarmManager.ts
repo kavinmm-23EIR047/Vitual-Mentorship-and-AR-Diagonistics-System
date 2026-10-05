@@ -77,6 +77,11 @@ export class AlarmManager {
     return alarm;
   }
 
+  /** Compatibility API used by the fault-injection and gesture controllers. */
+  triggerAlarm(code: string, title: string, severity: AlarmSeverity, description: string, equipment: string): AlarmRecord {
+    return this.raiseAlarm(code, title, description, severity, equipment);
+  }
+
   /**
    * Resolve an active alarm (equipment back to normal)
    */
@@ -177,6 +182,11 @@ export class AlarmManager {
       'SAFETY SYSTEM'
     );
     EventBus.emit('estop:triggered');
+  }
+
+  /** Compatibility name retained for emergency-stop gesture handling. */
+  latchEStop(): void {
+    this.triggerEStop();
   }
 
   /**
