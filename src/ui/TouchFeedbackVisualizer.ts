@@ -38,6 +38,9 @@ export class TouchFeedbackVisualizer {
   private sourceWorldPos: THREE.Vector3 | null = null;
   private targetWorldPos: THREE.Vector3 | null = null;
   private labelsVisible = false;
+  private activePointLabel: HTMLElement;
+  private activePointName = '';
+  private activeTargetName = '';
 
   constructor(canvasElement: HTMLCanvasElement, overlayContainer: HTMLElement) {
     this.canvas = canvasElement;
@@ -49,6 +52,14 @@ export class TouchFeedbackVisualizer {
     this.labelContainer = document.createElement('div');
     this.labelContainer.className = 'terminal-labels-container';
     overlayContainer.appendChild(this.labelContainer);
+
+    this.activePointLabel = document.createElement('div');
+    this.activePointLabel.className = 'equipment-callout-badge callout-plc active-io-point-label';
+    this.activePointLabel.innerHTML = '<div class="callout-indicator"></div><div class="callout-text"><span class="callout-name"></span><span class="callout-sub"></span></div>';
+    this.activePointLabel.style.display = 'none';
+    this.activePointLabel.style.transform = 'translate(-50%, -100%)';
+    this.activePointLabel.style.zIndex = '30';
+    this.labelContainer.appendChild(this.activePointLabel);
 
     this.startLoop();
   }
@@ -121,17 +132,20 @@ export class TouchFeedbackVisualizer {
   setActiveLabels(
     _stepNum: number,
     sourcePos: THREE.Vector3 | null,
-    _sourceName: string,
+    sourceName: string,
     targetPos: THREE.Vector3 | null,
-    _targetName: string
+    targetName: string
   ): void {
     this.sourceWorldPos = sourcePos ? sourcePos.clone() : null;
     this.targetWorldPos = targetPos ? targetPos.clone() : null;
     this.labelsVisible = !!(sourcePos && targetPos);
+    this.activePointName = sourceName;
+    this.activeTargetName = targetName;
   }
 
   hideLabels(): void {
     this.labelsVisible = false;
+    this.activePointLabel.style.display = 'none';
   }
 
   private startLoop(): void {
@@ -166,6 +180,22 @@ export class TouchFeedbackVisualizer {
       this.ctx.lineWidth = 1.8;
       this.ctx.stroke();
       this.ctx.restore();
+    }
+
+    // Show one concise label at the active blinking PLC I/O point.
+    if (this.camera && this.labelsVisible && this.sourceWorldPos) {
+      const source = this.project3DToScreen(this.sourceWorldPos, this.camera);
+      if (source) {
+        this.activePointLabel.querySelector('.callout-name')!.textContent = this.activePointName;
+        this.activePointLabel.querySelector('.callout-sub')!.textContent = `CONNECT TO · ${this.activeTargetName}`;
+        this.activePointLabel.style.left = `${source.x}px`;
+        this.activePointLabel.style.top = `${source.y - 34}px`;
+        this.activePointLabel.style.display = 'flex';
+      } else {
+        this.activePointLabel.style.display = 'none';
+      }
+    } else {
+      this.activePointLabel.style.display = 'none';
     }
 
     // 2. Draw animated wiring guidance trajectory between source and target

@@ -13,7 +13,6 @@ export class TrafficProcessEngine {
   private isRunning = false;
   private phaseTimeRemaining = 10;
   private pedCallActive = false;
-  private pedWalkTimer = 0;
 
   constructor(traffic: TrafficEquipment) {
     this.traffic = traffic;
@@ -69,6 +68,8 @@ export class TrafficProcessEngine {
   stop(): void {
     this.isRunning = false;
     AppState.setPLCState('STOP');
+    this.pedCallActive = false;
+    AppState.setPedCallRequested(false);
     this.setPhase('ALL_RED', 999);
   }
 
@@ -98,10 +99,14 @@ export class TrafficProcessEngine {
     if (phase === 'MAIN_GREEN' || phase === 'MAIN_YELLOW') {
       AppState.setPedWalkPhase('DONT_WALK');
       this.traffic.setPedWalkPhase('DONT_WALK');
-    } else if (phase === 'ALL_RED' && this.pedCallActive) {
-      AppState.setPedWalkPhase('WALK');
-      this.traffic.setPedWalkPhase('WALK');
+    } else if (phase === 'ALL_RED') {
+      this.setPedSignal('DONT_WALK');
     }
+  }
+
+  private setPedSignal(phase: PedWalkPhase): void {
+    AppState.setPedWalkPhase(phase);
+    this.traffic.setPedWalkPhase(phase);
   }
 
   update(dt: number): void {
@@ -129,9 +134,9 @@ export class TrafficProcessEngine {
     }
 
     // Pedestrian Walk Signal Flash Logic
-    if (AppState.pedWalkPhase === 'WALK' && this.phaseTimeRemaining < 2.5) {
-      AppState.setPedWalkPhase('FLASHING');
-      this.traffic.setPedWalkPhase('FLASHING');
+    if ((AppState.trafficPhase === 'ALL_RED' || AppState.trafficPhase === 'MAIN_RED') &&
+        AppState.pedWalkPhase === 'WALK' && this.phaseTimeRemaining < 2.5) {
+      this.setPedSignal('FLASHING');
     }
   }
 
@@ -145,32 +150,33 @@ export class TrafficProcessEngine {
         break;
 
       case 'MAIN_YELLOW':
-        // Yellow -> All Red Clearance (1.5s)
+        // Yellow -> all-red clearance, then a dedicated crossing window if requested.
         this.setPhase('ALL_RED', 1.5);
         break;
 
       case 'ALL_RED':
         if (this.pedCallActive) {
-          // Crosswalk active for 6 seconds
-          this.setPhase('MAIN_RED', 6);
-          AppState.setPedWalkPhase('WALK');
-          this.traffic.setPedWalkPhase('WALK');
-          this.pedCallActive = false;
-          AppState.setPedCallRequested(false);
-          this.traffic.setPedButtonPressed(false);
+          // Keep both vehicle approaches stopped throughout the crossing.
+          this.beginPedestrianCrossing();
         } else {
-          // Cross street cycle or back to Green (8s)
-          this.setPhase('MAIN_RED', 4);
+          this.setPhase('MAIN_GREEN', 10);
         }
         break;
 
       case 'MAIN_RED':
       default:
-        // Red -> Main Green (10s)
+        // Crossing window ended; pedestrian is stopped before vehicles receive green.
+        this.setPedSignal('DONT_WALK');
         this.setPhase('MAIN_GREEN', 10);
-        AppState.setPedWalkPhase('DONT_WALK');
-        this.traffic.setPedWalkPhase('DONT_WALK');
         break;
     }
+  }
+
+  private beginPedestrianCrossing(): void {
+    this.setPhase('MAIN_RED', 7);
+    this.pedCallActive = false;
+    AppState.setPedCallRequested(false);
+    this.traffic.setPedButtonPressed(false);
+    this.setPedSignal('WALK');
   }
 }

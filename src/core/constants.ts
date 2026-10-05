@@ -76,6 +76,8 @@ export const COLORS = {
 // --- Scene Layout (world units matching reference industrial bench) ---
 export const LAYOUT = {
   PLC_POSITION: { x: 0.22, y: 0.36, z: -0.05 },
+  // Behind the intersection, centered in the scene and kept clear of the road corners.
+  TRAFFIC_PLC_POSITION: { x: 0.02, y: 0.44, z: -0.38 },
   REACTOR_PLC_POSITION: { x: 0.28, y: 0.36, z: -0.05 },
   TANK_POSITION: { x: -0.52, y: 0, z: 0 },
   OPERATOR_STATION_POSITION: { x: -0.31, y: 0.26, z: 0 },

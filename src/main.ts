@@ -214,8 +214,8 @@ function setupExperiment(exp: ExperimentType): void {
     touchVisualizer.addEquipmentCallout('callout_pusher', 'Pneumatic Diverter', 'SMC Cylinder', new THREE.Vector3(0.12, 0.18, -0.12), 'valve');
     touchVisualizer.addEquipmentCallout('callout_plc', 'PLC', 'SIMATIC S7-1200', new THREE.Vector3(0.22, 0.54, -0.05), 'plc');
   } else if (exp === 'TRAFFIC') {
-    plc.group.position.set(LAYOUT.PLC_POSITION.x, LAYOUT.PLC_POSITION.y, LAYOUT.PLC_POSITION.z);
-    plc.group.scale.setScalar(1);
+    plc.group.position.set(LAYOUT.TRAFFIC_PLC_POSITION.x, LAYOUT.TRAFFIC_PLC_POSITION.y, LAYOUT.TRAFFIC_PLC_POSITION.z);
+    plc.group.scale.setScalar(0.82);
     reactorGroup.scale.setScalar(1);
     trafficGroup.visible = true;
 
@@ -225,7 +225,7 @@ function setupExperiment(exp: ExperimentType): void {
     terminalManager.registerTerminal('TRAFFIC_PED_LIGHT', 'Pedestrian Walk Light', traffic.terminalPedLight);
 
     touchVisualizer.addEquipmentCallout('callout_sig', 'Traffic Signal Post', 'Red/Amber/Green LEDs', new THREE.Vector3(0.28, 0.40, 0.18), 'plc');
-    touchVisualizer.addEquipmentCallout('callout_ped', 'Pedestrian Post', 'Walk / Don\'t Walk & PB', new THREE.Vector3(-0.32, 0.28, 0.24), 'button');
+    touchVisualizer.addEquipmentCallout('callout_ped', 'Pedestrian Post', 'Walk / Don\'t Walk & PB', new THREE.Vector3(0.38, 0.28, 0.24), 'button');
     touchVisualizer.addEquipmentCallout('callout_loop', 'Inductive Loop Sensor', 'Vehicle Detector', new THREE.Vector3(0.12, 0.05, -0.16), 'sensor');
     touchVisualizer.addEquipmentCallout('callout_plc', 'PLC', 'SIMATIC S7-1200', new THREE.Vector3(0.22, 0.54, -0.05), 'plc');
   } else if (exp === 'ROBOT') {

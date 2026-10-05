@@ -41,7 +41,16 @@ export class TrafficEquipment {
   private carGroup: THREE.Group;
   private carPositionZ = -0.65;
   private carSpeed = 0;
+  private vehicleClock = 0;
   private carWheels: THREE.Mesh[] = [];
+  private pedestrian: THREE.Group;
+  private pedestrianLegs: THREE.Group[] = [];
+  private pedestrianArms: THREE.Group[] = [];
+  private pedestrianStartX = 0.39;
+  private pedestrianEndX = -0.36;
+  private pedestrianProgress = 0;
+  private pedestrianWalking = false;
+  private pedestrianClock = 0;
 
   // Terminal Objects for PLC Wiring
   terminalPedButton: THREE.Object3D;
@@ -62,9 +71,9 @@ export class TrafficEquipment {
 
     // Base Materials
     const asphaltMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.85,
-      metalness: 0.1,
+      color: 0x303b49,
+      roughness: 0.94,
+      metalness: 0,
     });
     const stripeWhiteMat = new THREE.MeshStandardMaterial({
       color: 0xf8fafc,
@@ -157,12 +166,33 @@ export class TrafficEquipment {
     road.receiveShadow = true;
     this.group.add(road);
 
+    // Low curb and subtle lane insets make the small intersection read as a road model.
+    const curbMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.78 });
+    for (const [x, z, sx, sz] of [
+      [0, -0.485, 0.96, 0.018], [0, 0.485, 0.96, 0.018],
+      [-0.485, 0, 0.018, 0.96], [0.485, 0, 0.018, 0.96],
+    ]) {
+      const curb = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.025, sz), curbMat);
+      curb.position.set(x, 0.002, z);
+      curb.castShadow = true;
+      curb.receiveShadow = true;
+      this.group.add(curb);
+    }
+
+    // Dashed lane separators on the approach, leaving the junction clear.
+    const laneDashMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.7 });
+    for (const z of [-0.41, -0.31, -0.21, 0.31, 0.41]) {
+      const dash = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.002, 0.045), laneDashMat);
+      dash.position.set(-0.13, 0.002, z);
+      this.group.add(dash);
+    }
+
     // Crosswalk Zebra Stripes
-    const zebraCount = 6;
+    const zebraCount = 7;
     for (let i = 0; i < zebraCount; i++) {
-      const stripeGeo = new THREE.BoxGeometry(0.04, 0.002, 0.22);
+      const stripeGeo = new THREE.BoxGeometry(0.055, 0.003, 0.22);
       const stripe = new THREE.Mesh(stripeGeo, stripeWhiteMat);
-      stripe.position.set(-0.25 + i * 0.1, 0.002, 0.24);
+      stripe.position.set(-0.255 + i * 0.085, 0.003, 0.24);
       stripe.receiveShadow = true;
       this.group.add(stripe);
     }
@@ -255,53 +285,55 @@ export class TrafficEquipment {
     this.greenLamp2.rotation.y = Math.PI / 2;
     this.group.add(this.greenLamp2);
 
-    // --- 5. Pedestrian Crossing Station (Left Corner) ---
+    // --- 5. Pedestrian Crossing Station (Right Corner) ---
     const pedPostGeo = new THREE.CylinderGeometry(0.012, 0.015, 0.34, 16);
     const pedPost = new THREE.Mesh(pedPostGeo, postMat);
-    pedPost.position.set(-0.32, 0.17, 0.24);
+    pedPost.position.set(0.38, 0.17, 0.24);
     pedPost.castShadow = true;
     this.group.add(pedPost);
 
     // Ped Head Housing
     const pedHousingGeo = new THREE.BoxGeometry(0.05, 0.11, 0.04);
     const pedHousing = new THREE.Mesh(pedHousingGeo, headHousingMat);
-    pedHousing.position.set(-0.32, 0.27, 0.24);
+    pedHousing.position.set(0.38, 0.27, 0.24);
     this.group.add(pedHousing);
 
     // Ped Lenses
     this.pedStopLamp = new THREE.Mesh(lensGeo, this.pedStopMat);
-    this.pedStopLamp.position.set(-0.32, 0.295, 0.262);
+    this.pedStopLamp.position.set(0.38, 0.295, 0.262);
     this.group.add(this.pedStopLamp);
 
     this.pedWalkLamp = new THREE.Mesh(lensGeo, this.pedWalkMat);
-    this.pedWalkLamp.position.set(-0.32, 0.245, 0.262);
+    this.pedWalkLamp.position.set(0.38, 0.245, 0.262);
     this.group.add(this.pedWalkLamp);
 
     // Pedestrian Call Pushbutton Station
     const btnBoxGeo = new THREE.BoxGeometry(0.03, 0.05, 0.03);
     const btnBox = new THREE.Mesh(btnBoxGeo, new THREE.MeshStandardMaterial({ color: 0x334155 }));
-    btnBox.position.set(-0.32, 0.14, 0.25);
+    btnBox.position.set(0.38, 0.14, 0.25);
     this.group.add(btnBox);
 
     const btnGeo = new THREE.CylinderGeometry(0.01, 0.01, 0.008, 16);
     btnGeo.rotateX(Math.PI / 2);
     this.pedCallButtonMesh = new THREE.Mesh(btnGeo, this.pedCallBtnMat);
-    this.pedCallButtonMesh.position.set(-0.32, 0.14, 0.268);
+    this.pedCallButtonMesh.position.set(0.38, 0.14, 0.268);
     this.group.add(this.pedCallButtonMesh);
 
     // --- 6. Animated 3D Vehicle ---
     this.carGroup = new THREE.Group();
     this.carGroup.position.set(0.12, 0, this.carPositionZ);
 
-    const carBodyMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7,
-      metalness: 0.7,
-      roughness: 0.3,
+    const carBodyMat = new THREE.MeshPhysicalMaterial({
+      color: 0xe04f35,
+      metalness: 0.32,
+      roughness: 0.27,
+      clearcoat: 0.8,
+      clearcoatRoughness: 0.2,
     });
     const carGlassMat = new THREE.MeshStandardMaterial({
-      color: 0x0f172a,
-      roughness: 0.1,
-      metalness: 0.9,
+      color: 0x16314a,
+      roughness: 0.16,
+      metalness: 0.42,
     });
     const wheelMat = new THREE.MeshStandardMaterial({
       color: 0x111827,
@@ -314,21 +346,46 @@ export class TrafficEquipment {
     });
 
     // Lower Chassis
-    const chassisGeo = new THREE.BoxGeometry(0.12, 0.04, 0.24);
+    const chassisGeo = new THREE.BoxGeometry(0.13, 0.045, 0.255);
     const chassis = new THREE.Mesh(chassisGeo, carBodyMat);
     chassis.position.set(0, 0.035, 0);
     chassis.castShadow = true;
     this.carGroup.add(chassis);
 
     // Cabin / Roof
-    const cabinGeo = new THREE.BoxGeometry(0.10, 0.035, 0.13);
+    const cabinGeo = new THREE.BoxGeometry(0.105, 0.052, 0.145);
     const cabin = new THREE.Mesh(cabinGeo, carGlassMat);
-    cabin.position.set(0, 0.065, -0.01);
+    cabin.position.set(0, 0.082, -0.018);
     cabin.castShadow = true;
     this.carGroup.add(cabin);
 
+    // Hood, trunk, bumpers and side skirts give the vehicle a recognizable profile.
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(0.112, 0.025, 0.068), carBodyMat);
+    hood.position.set(0, 0.061, 0.091);
+    hood.castShadow = true;
+    this.carGroup.add(hood);
+    const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.112, 0.024, 0.052), carBodyMat);
+    trunk.position.set(0, 0.06, -0.103);
+    trunk.castShadow = true;
+    this.carGroup.add(trunk);
+    const bumperMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, metalness: 0.35, roughness: 0.4 });
+    for (const z of [-0.128, 0.128]) {
+      const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.132, 0.018, 0.018), bumperMat);
+      bumper.position.set(0, 0.031, z);
+      this.carGroup.add(bumper);
+    }
+    const windowMat = new THREE.MeshStandardMaterial({ color: 0x7dd3fc, metalness: 0.3, roughness: 0.25 });
+    for (const z of [-0.065, 0.04]) {
+      const sideWindow = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.029, 0.047), windowMat);
+      sideWindow.position.set(0.054, 0.084, z);
+      this.carGroup.add(sideWindow);
+      const mirroredWindow = sideWindow.clone();
+      mirroredWindow.position.x = -0.054;
+      this.carGroup.add(mirroredWindow);
+    }
+
     // Headlights
-    const hLightGeo = new THREE.BoxGeometry(0.02, 0.012, 0.01);
+    const hLightGeo = new THREE.BoxGeometry(0.026, 0.014, 0.012);
     const hlLeft = new THREE.Mesh(hLightGeo, headlightMat);
     hlLeft.position.set(-0.04, 0.04, 0.12);
     this.carGroup.add(hlLeft);
@@ -338,14 +395,14 @@ export class TrafficEquipment {
     this.carGroup.add(hlRight);
 
     // Wheels
-    const wheelGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.015, 16);
+    const wheelGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.018, 20);
     wheelGeo.rotateZ(Math.PI / 2);
 
     const wheelPos = [
-      [-0.065, 0.02, 0.07],
-      [0.065, 0.02, 0.07],
-      [-0.065, 0.02, -0.07],
-      [0.065, 0.02, -0.07],
+      [-0.069, 0.022, 0.075],
+      [0.069, 0.022, 0.075],
+      [-0.069, 0.022, -0.075],
+      [0.069, 0.022, -0.075],
     ];
     for (const [wx, wy, wz] of wheelPos) {
       const wheel = new THREE.Mesh(wheelGeo, wheelMat);
@@ -356,9 +413,54 @@ export class TrafficEquipment {
 
     this.group.add(this.carGroup);
 
+    // --- 7. Pedestrian crossing character ---
+    this.pedestrian = new THREE.Group();
+    this.pedestrian.position.set(this.pedestrianStartX, 0.012, 0.24);
+    this.pedestrian.scale.setScalar(1.25);
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xf2b28c, roughness: 0.72 });
+    const shirtMat = new THREE.MeshStandardMaterial({ color: 0x8b5cf6, roughness: 0.58 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1e3a5f, roughness: 0.72 });
+    const shoeMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.82 });
+
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.026, 0.052, 4, 8), shirtMat);
+    torso.position.y = 0.115;
+    torso.castShadow = true;
+    this.pedestrian.add(torso);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.022, 14, 12), skinMat);
+    head.position.y = 0.17;
+    head.castShadow = true;
+    this.pedestrian.add(head);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.0225, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.48), new THREE.MeshStandardMaterial({ color: 0x30231f, roughness: 0.92 }));
+    hair.position.y = 0.176;
+    this.pedestrian.add(hair);
+
+    for (const side of [-1, 1]) {
+      const leg = new THREE.Group();
+      leg.position.set(side * 0.012, 0.09, 0);
+      const legMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.008, 0.055, 3, 6), pantsMat);
+      legMesh.position.y = -0.03;
+      legMesh.castShadow = true;
+      leg.add(legMesh);
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.009, 0.026), shoeMat);
+      shoe.position.set(0, -0.063, 0.006);
+      leg.add(shoe);
+      this.pedestrianLegs.push(leg);
+      this.pedestrian.add(leg);
+
+      const arm = new THREE.Group();
+      arm.position.set(side * 0.031, 0.139, 0);
+      const armMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.0065, 0.044, 3, 6), shirtMat);
+      armMesh.position.y = -0.026;
+      armMesh.castShadow = true;
+      arm.add(armMesh);
+      this.pedestrianArms.push(arm);
+      this.pedestrian.add(arm);
+    }
+    this.group.add(this.pedestrian);
+
     // --- 7. Terminals for PLC Wiring ---
     this.terminalPedButton = new THREE.Object3D();
-    this.terminalPedButton.position.set(-0.32, 0.14, 0.28);
+    this.terminalPedButton.position.set(0.38, 0.14, 0.28);
     this.group.add(this.terminalPedButton);
 
     this.terminalVehicleSensor = new THREE.Object3D();
@@ -370,7 +472,7 @@ export class TrafficEquipment {
     this.group.add(this.terminalMainSignal);
 
     this.terminalPedLight = new THREE.Object3D();
-    this.terminalPedLight.position.set(-0.32, 0.27, 0.28);
+    this.terminalPedLight.position.set(0.38, 0.27, 0.28);
     this.group.add(this.terminalPedLight);
 
     // Initial update
@@ -428,7 +530,21 @@ export class TrafficEquipment {
   }
 
   setPedWalkPhase(phase: PedWalkPhase): void {
+    const wasPermitted = this.currentPedPhase === 'WALK' || this.currentPedPhase === 'FLASHING';
     this.currentPedPhase = phase;
+    if (phase === 'WALK' || phase === 'FLASHING') {
+      if (!wasPermitted) {
+        this.pedestrianProgress = 0;
+        this.pedestrian.position.x = this.pedestrianStartX;
+      }
+      this.pedestrianWalking = true;
+    } else {
+      this.pedestrianWalking = false;
+      // A new walk cycle always begins from the curb, even if the previous
+      // signal ended before the model reached the far side.
+      this.pedestrianProgress = 0;
+      this.pedestrian.position.x = this.pedestrianStartX;
+    }
 
     if (phase === 'WALK') {
       this.pedWalkMat.emissive.setHex(0x10b981);
@@ -464,36 +580,57 @@ export class TrafficEquipment {
   resetCar(): void {
     this.carPositionZ = -0.55;
     this.carGroup.position.z = this.carPositionZ;
+    this.carSpeed = 0;
+    this.pedestrianProgress = 0;
+    this.pedestrianWalking = false;
+    this.pedestrian.position.set(this.pedestrianStartX, 0.012, 0.24);
   }
 
   update(dt: number, onVehiclePass?: () => void): void {
-    // 1. Vehicle Movement Logic
+    // Accelerate and brake smoothly so the car eases up to the stop line.
+    dt = Math.min(dt, 0.05);
+    this.vehicleClock += dt;
+    this.pedestrianClock += dt;
     const stopLineZ = -0.04;
-    const isMainGreen = this.currentPhase === 'MAIN_GREEN';
+    const pedestrianHasRightOfWay = this.currentPedPhase === 'WALK' || this.currentPedPhase === 'FLASHING';
+    const vehiclesAllowed = this.currentPhase === 'MAIN_GREEN' || this.currentPhase === 'MAIN_YELLOW';
+    const canProceed = !pedestrianHasRightOfWay && (vehiclesAllowed || this.carPositionZ > stopLineZ);
+    const targetSpeed = canProceed ? 0.42 : 0;
+    const acceleration = canProceed ? 0.62 : 0.9;
+    const speedDelta = targetSpeed - this.carSpeed;
+    this.carSpeed += THREE.MathUtils.clamp(speedDelta, -acceleration * dt, acceleration * dt);
 
-    if (isMainGreen || this.carPositionZ > stopLineZ) {
-      // Moving through intersection
-      this.carSpeed = 0.38;
+    if (this.carSpeed > 0.001) {
       this.carPositionZ += this.carSpeed * dt;
       if (this.carPositionZ > 0.65) {
         this.carPositionZ = -0.65;
         if (onVehiclePass) onVehiclePass();
       }
     } else {
-      // Approaching stop line
-      if (this.carPositionZ < stopLineZ - 0.05) {
-        this.carPositionZ += 0.25 * dt;
-      } else {
-        this.carSpeed = 0;
-      }
+      this.carSpeed = 0;
     }
 
     this.carGroup.position.z = this.carPositionZ;
+    this.carGroup.position.y = Math.sin(this.vehicleClock * 5) * 0.0015;
+
+    // Walk across the zebra crossing only while the pedestrian signal permits it.
+    if (this.pedestrianWalking && this.pedestrianProgress < 1) {
+      this.pedestrianProgress = Math.min(1, this.pedestrianProgress + dt / 5.2);
+    }
+    const walkEase = this.pedestrianProgress * this.pedestrianProgress * (3 - 2 * this.pedestrianProgress);
+    this.pedestrian.position.x = THREE.MathUtils.lerp(this.pedestrianStartX, this.pedestrianEndX, walkEase);
+    const walkingNow = this.pedestrianWalking && this.pedestrianProgress < 1;
+    const stride = walkingNow ? Math.sin(this.pedestrianClock * 8.5) * 0.48 : 0;
+    this.pedestrianLegs[0].rotation.x = stride;
+    this.pedestrianLegs[1].rotation.x = -stride;
+    this.pedestrianArms[0].rotation.x = -stride * 0.72;
+    this.pedestrianArms[1].rotation.x = stride * 0.72;
+    this.pedestrian.position.y = 0.012 + (walkingNow ? Math.abs(Math.sin(this.pedestrianClock * 8.5)) * 0.003 : 0);
 
     // Rotate wheels
     if (this.carSpeed > 0.01) {
       for (const w of this.carWheels) {
-        w.rotation.x += this.carSpeed * dt * 25;
+        w.rotation.x += this.carSpeed * dt / 0.022;
       }
     }
 
@@ -502,7 +639,7 @@ export class TrafficEquipment {
     this.isVehiclePresent = distToLoop < 0.12;
 
     if (this.isVehiclePresent) {
-      this.loopMat.emissiveIntensity = 2.5 + Math.sin(Date.now() * 0.01) * 0.5;
+      this.loopMat.emissiveIntensity = 2.3 + Math.sin(this.vehicleClock * 8) * 0.35;
     } else {
       this.loopMat.emissiveIntensity = 0.6;
     }
