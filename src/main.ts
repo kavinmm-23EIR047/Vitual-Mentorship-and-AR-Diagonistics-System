@@ -319,7 +319,10 @@ async function init(): Promise<void> {
       touchVisualizer
     );
 
-    // 6. Check AR readiness
+    // 6. Set initial mode (Wiring Lab - rotation locked)
+    sceneManager.controls.enabled = false;
+
+    // 7. Check AR readiness
     updateLoading(loadingFill, 90, 'Checking AR readiness...');
     await arManager.checkSupport();
 
@@ -406,9 +409,9 @@ EventBus.on('training:stepChanged', () => highlightCurrentStep());
 
 EventBus.on('training:completed', () => {
   touchVisualizer.hideLabels();
-  isOrbitLocked = false;
-  sceneManager.controls.enabled = true;
-  EventBus.emit('scene:orbitStateChanged', { enabled: true });
+  isOrbitLocked = true;
+  sceneManager.controls.enabled = false;
+  EventBus.emit('scene:orbitStateChanged', { enabled: false });
   for (const t of plc.terminals) {
     if (AppState.wiringProgress.completed.some((c) => c.source === t.id)) {
       plc.setTerminalState(t.id, 'connected');
@@ -423,7 +426,9 @@ EventBus.on('training:completed', () => {
 
 EventBus.on('training:reset', () => {
   wireRenderer.removeAll();
-  sceneManager.controls.enabled = true;
+  isOrbitLocked = true;
+  sceneManager.controls.enabled = false;
+  EventBus.emit('scene:orbitStateChanged', { enabled: false });
   highlightCurrentStep();
 });
 
@@ -438,11 +443,7 @@ EventBus.on('scene:resetCamera', () => {
   terminalManager.updateWorldPositions();
 
   const mode = placementManager.getMode();
-  if (mode === 'WIRING') {
-    sceneManager.controls.enabled = false;
-  } else if (mode === 'ROTATE_RIG') {
-    sceneManager.controls.enabled = !isOrbitLocked;
-  }
+  sceneManager.controls.enabled = mode === 'ROTATE_RIG' && !isOrbitLocked;
 
   uiManager.showToast('info', '3D View & Product: Reset to Default');
 });
@@ -459,21 +460,28 @@ EventBus.on('ui:toggleCallouts', () => {
   uiManager.showToast('info', visible ? 'Equipment Labels: ON' : 'Equipment Labels: OFF');
 });
 
-let isOrbitLocked = false;
+let isOrbitLocked = true;
 
 EventBus.on('scene:toggleOrbit', () => {
-  isOrbitLocked = !isOrbitLocked;
-  const mode = placementManager.getMode();
-  if (mode === 'WIRING') {
+  if (placementManager.getMode() !== 'ROTATE_RIG') {
+    isOrbitLocked = true;
     sceneManager.controls.enabled = false;
-  } else {
-    sceneManager.controls.enabled = !isOrbitLocked;
+    EventBus.emit('scene:orbitStateChanged', { enabled: false });
+    uiManager.showToast('info', 'Select Rotate 3D to enable scene rotation.');
+    return;
   }
+  isOrbitLocked = !isOrbitLocked;
+  sceneManager.controls.enabled = !isOrbitLocked;
   EventBus.emit('scene:orbitStateChanged', { enabled: !isOrbitLocked });
   uiManager.showToast('info', isOrbitLocked ? '3D Rotation: Locked (Fixed)' : '3D Rotation: Unlocked (Free Orbit)');
 });
 
 EventBus.on('scene:toggleAutoRotate', () => {
+  if (placementManager.getMode() !== 'ROTATE_RIG' || isOrbitLocked) {
+    sceneManager.controls.autoRotate = false;
+    uiManager.showToast('info', 'Enable Rotate 3D before starting auto orbit.');
+    return;
+  }
   sceneManager.controls.autoRotate = !sceneManager.controls.autoRotate;
   sceneManager.controls.autoRotateSpeed = 1.8;
   EventBus.emit('scene:autoRotateStateChanged', { enabled: sceneManager.controls.autoRotate });
@@ -484,13 +492,17 @@ EventBus.on('placement:requestMode', (mode: string) => {
   placementManager.setMode(mode as any);
   lastTwoHandDistance = null;
   if (mode === 'ROTATE_RIG') {
-    sceneManager.controls.enabled = !isOrbitLocked;
+    isOrbitLocked = false;
+    sceneManager.controls.enabled = true;
+    sceneManager.controls.autoRotate = false;
+    EventBus.emit('scene:orbitStateChanged', { enabled: true });
     uiManager.showToast('info', 'Rotate 3D Active: Orbit with mouse/touch or use two-hand spatial gestures.');
-  } else if (mode === 'WIRING') {
-    sceneManager.controls.enabled = false;
-    uiManager.showToast('info', 'Wiring Lab: 3D rotation locked for stable wiring.');
   } else {
-    sceneManager.controls.enabled = !isOrbitLocked;
+    isOrbitLocked = true;
+    sceneManager.controls.enabled = false;
+    sceneManager.controls.autoRotate = false;
+    EventBus.emit('scene:orbitStateChanged', { enabled: false });
+    if (mode === 'WIRING') uiManager.showToast('info', 'Wiring Lab: 3D rotation locked. Select Rotate 3D to orbit.');
   }
 });
 
@@ -567,20 +579,16 @@ function handleTouchDown(clientX: number, clientY: number): boolean {
   touchVisualizer.triggerTouchRipple(clientX, clientY);
 
   if (wiringEngine.isCompleted()) {
-    sceneManager.controls.enabled = !isOrbitLocked;
     return false;
   }
 
   const step = wiringEngine.getCurrentStep();
   if (!step) {
-    sceneManager.controls.enabled = !isOrbitLocked;
     return false;
   }
 
   const srcTerm = plc.getTerminalById(step.sourceId);
-
   const srcScreenPos = srcTerm ? getScreenPos(srcTerm.worldPosition) : null;
-
   const distToSrc = srcScreenPos ? Math.hypot(clientX - srcScreenPos.x, clientY - srcScreenPos.y) : 9999;
 
   // A real wire drag always starts at the active PLC output/input, never by
@@ -611,7 +619,6 @@ function handleTouchDown(clientX: number, clientY: number): boolean {
     }
   }
 
-  sceneManager.controls.enabled = !isOrbitLocked;
   return false;
 }
 
@@ -688,7 +695,8 @@ function handleTouchUp(clientX: number, clientY: number): void {
     isSnapped = false;
   }
 
-  sceneManager.controls.enabled = !isOrbitLocked;
+  const mode = placementManager.getMode();
+  sceneManager.controls.enabled = mode === 'ROTATE_RIG' && !isOrbitLocked;
 }
 
 // Pointer Events
@@ -700,12 +708,11 @@ canvas.addEventListener('pointerdown', (e) => {
 
   const mode = placementManager.getMode();
   if (mode === 'WIRING') {
+    sceneManager.controls.enabled = false;
     const isWireDrag = handleTouchDown(e.clientX, e.clientY);
     if (isWireDrag) {
       e.stopImmediatePropagation();
       e.preventDefault();
-    } else {
-      sceneManager.controls.enabled = !isOrbitLocked;
     }
   } else if (mode === 'MOVE_COMPONENT') {
     const ok = placementManager.startDrag(e.clientX, e.clientY);
@@ -714,10 +721,10 @@ canvas.addEventListener('pointerdown', (e) => {
       e.stopImmediatePropagation();
       e.preventDefault();
     } else {
-      sceneManager.controls.enabled = !isOrbitLocked;
+      sceneManager.controls.enabled = false;
     }
   } else if (mode === 'ROTATE_RIG') {
-    sceneManager.controls.enabled = true;
+    sceneManager.controls.enabled = !isOrbitLocked;
   }
 }, { capture: true, passive: false });
 
@@ -743,7 +750,7 @@ window.addEventListener('pointerup', (e) => {
   }
   if (mode === 'MOVE_COMPONENT') {
     placementManager.endDrag();
-    sceneManager.controls.enabled = !isOrbitLocked;
+    sceneManager.controls.enabled = false;
   }
 }, { capture: true, passive: false });
 
@@ -890,7 +897,7 @@ EventBus.on(Events.FINGER_MOVE, (data: {
           activeSourceId = null;
           isSnapped = false;
           handTargetHoverSince = 0;
-          sceneManager.controls.enabled = !isOrbitLocked;
+          sceneManager.controls.enabled = false;
           setWireHint('Connected. Follow the highlighted terminals for the next wire.');
           if (tgtScreenPos) {
             touchVisualizer.triggerTouchRipple(tgtScreenPos.x, tgtScreenPos.y, 'rgba(34, 197, 94, 0.95)');
@@ -940,24 +947,28 @@ EventBus.on(Events.HAND_LOST, () => {
 
 // Clean two-hand 3D orbit rotation (supports spatial drag and steering wheel motion)
 EventBus.on('hand:twoHandMove', (data: { centerX: number; centerY: number; deltaX: number; deltaY: number; deltaAngle?: number; deltaDepth?: number }) => {
+  const mode = placementManager.getMode();
+  // Strictly prevent rotation during WIRING mode or when 3D Rotation is locked
+  if (mode !== 'ROTATE_RIG' || isOrbitLocked) {
+    return;
+  }
+
   const dx = data.deltaX / window.innerWidth;
   const dy = data.deltaY / window.innerHeight;
   const dAngle = data.deltaAngle || 0;
   const dDepth = data.deltaDepth || 0;
   if (Math.hypot(dx, dy) > 0.0001 || Math.abs(dAngle) > 0.0005 || Math.abs(dDepth) > 0.0005) {
     sceneManager.rotateByDelta(dx, dy, dAngle, dDepth);
-
   }
-
 });
 
 // 3D Navigation D-Pad & Zoom Gizmo Handlers
 EventBus.on('scene:orbitTilt', (direction: number) => {
-  sceneManager.orbitTilt(direction);
+  if (placementManager.getMode() === 'ROTATE_RIG' && !isOrbitLocked) sceneManager.orbitTilt(direction);
 });
 
 EventBus.on('scene:orbitPan', (direction: number) => {
-  sceneManager.orbitPan(direction);
+  if (placementManager.getMode() === 'ROTATE_RIG' && !isOrbitLocked) sceneManager.orbitPan(direction);
 });
 
 EventBus.on('scene:zoomIn', () => {
@@ -1037,6 +1048,3 @@ sceneManager.start();
 init();
 
 console.log('[ARPLCWebAR] Industrial AR 5-Experiment Suite Ready.');
-
-
-

@@ -119,11 +119,15 @@ export class UIManager {
         </button>
 
         <div class="quick-tools-group">
+          <button id="btn-toggle-orbit-lock" class="tool-icon-btn active" title="Lock / Unlock 3D Product &amp; Camera Rotation">
+            <span id="orbit-lock-icon">${Icons.lock({ size: 14 })}</span>
+            <span class="btn-label" id="orbit-lock-label">Lock 3D</span>
+          </button>
           <button id="btn-toggle-labels" class="tool-icon-btn active" title="Toggle 3D Equipment Labels">
             <span>${Icons.tag({ size: 14 })}</span>
             <span class="btn-label">Labels</span>
           </button>
-          <button id="btn-reset-view" class="tool-icon-btn" title="Reset Camera View">
+          <button id="btn-reset-view" class="tool-icon-btn" title="Reset Camera View &amp; 3D Product Position">
             <span>${Icons.compass({ size: 14 })}</span>
             <span class="btn-label">Reset View</span>
           </button>
@@ -897,6 +901,26 @@ export class UIManager {
     });
 
     // Top Utility Controls
+    document.getElementById('btn-toggle-orbit-lock')?.addEventListener('click', () => {
+      EventBus.emit('scene:toggleOrbit');
+    });
+
+    EventBus.on('scene:orbitStateChanged', (data: { enabled: boolean }) => {
+      const btn = document.getElementById('btn-toggle-orbit-lock');
+      const icon = document.getElementById('orbit-lock-icon');
+      const label = document.getElementById('orbit-lock-label');
+      const isLocked = !data.enabled;
+      if (btn) {
+        btn.classList.toggle('active', isLocked);
+      }
+      if (icon) {
+        icon.innerHTML = isLocked ? Icons.lock({ size: 14 }) : Icons.unlock({ size: 14 });
+      }
+      if (label) {
+        label.textContent = isLocked ? 'Lock 3D' : 'Free 3D';
+      }
+    });
+
     document.getElementById('btn-toggle-labels')?.addEventListener('click', () => {
       EventBus.emit('ui:toggleCallouts');
       document.getElementById('btn-toggle-labels')?.classList.toggle('active');

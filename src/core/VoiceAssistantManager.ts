@@ -541,20 +541,8 @@ export class VoiceAssistantManager {
   }
 
   public setMode(mode: AssistantMode): void {
-    if (this.currentMode === mode) {
-      const rotateButton = document.getElementById('btn-mode-rotate') as HTMLButtonElement | null;
-      if (rotateButton) rotateButton.disabled = mode === 'WIRING';
-      return;
-    }
+    if (this.currentMode === mode) return;
     this.currentMode = mode;
-    // Wiring lab is a focused connection workflow; prevent the scene orbit tool there.
-    const rotateButton = document.getElementById('btn-mode-rotate') as HTMLButtonElement | null;
-    if (rotateButton) {
-      rotateButton.disabled = mode === 'WIRING';
-      rotateButton.title = mode === 'WIRING'
-        ? 'Scene rotation is disabled in Wiring Lab. Connect the highlighted terminals.'
-        : 'Use both hands to orbit and zoom the 3D station';
-    }
     this.currentTaskIndex = 0;
     this.stopTimers();
     this.updateHUDUI();
