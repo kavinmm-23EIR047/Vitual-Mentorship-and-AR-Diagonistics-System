@@ -930,17 +930,21 @@ export class UIManager {
       this.showToast('info', 'Process halted');
     });
 
-    document.getElementById('btn-modal-start')?.addEventListener('click', (e) => {
-      e?.stopPropagation();
+    this.completionModal.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('#btn-modal-start')) return;
+      event.preventDefault();
+      event.stopPropagation();
       if (alarmManager.isEStopLatched()) {
         this.showToast('error', 'Cannot start: Release Emergency Stop first!');
         return;
       }
       this.hideCompletionModal();
+      AppState.setPLCState('RUN');
       EventBus.emit(Events.PROCESS_START);
       voiceAssistantManager.setMode('SCADA');
       this.showToast('success', 'Process simulation active');
-    });
+    }, true);
     document.getElementById('btn-modal-restart')?.addEventListener('click', (e) => {
       e?.stopPropagation();
       this.hideCompletionModal();

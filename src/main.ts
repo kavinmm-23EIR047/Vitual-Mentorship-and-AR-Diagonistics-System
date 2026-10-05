@@ -433,7 +433,18 @@ EventBus.on('training:requestReset', () => {
 
 EventBus.on('scene:resetCamera', () => {
   sceneManager.resetCameraView();
-  uiManager.showToast('info', '3D View: Reset to Default');
+  placementManager.resetLayout();
+  plc.updateTerminalWorldPositions();
+  terminalManager.updateWorldPositions();
+
+  const mode = placementManager.getMode();
+  if (mode === 'WIRING') {
+    sceneManager.controls.enabled = false;
+  } else if (mode === 'ROTATE_RIG') {
+    sceneManager.controls.enabled = !isOrbitLocked;
+  }
+
+  uiManager.showToast('info', '3D View & Product: Reset to Default');
 });
 
 EventBus.on('ui:togglePortGuide', () => {
@@ -452,9 +463,14 @@ let isOrbitLocked = false;
 
 EventBus.on('scene:toggleOrbit', () => {
   isOrbitLocked = !isOrbitLocked;
-  sceneManager.controls.enabled = !isOrbitLocked;
+  const mode = placementManager.getMode();
+  if (mode === 'WIRING') {
+    sceneManager.controls.enabled = false;
+  } else {
+    sceneManager.controls.enabled = !isOrbitLocked;
+  }
   EventBus.emit('scene:orbitStateChanged', { enabled: !isOrbitLocked });
-  uiManager.showToast('info', isOrbitLocked ? '3D Camera: Locked' : '3D Camera: Free Orbit');
+  uiManager.showToast('info', isOrbitLocked ? '3D Rotation: Locked (Fixed)' : '3D Rotation: Unlocked (Free Orbit)');
 });
 
 EventBus.on('scene:toggleAutoRotate', () => {
@@ -469,8 +485,11 @@ EventBus.on('placement:requestMode', (mode: string) => {
   lastTwoHandDistance = null;
   if (mode === 'ROTATE_RIG') {
     sceneManager.controls.enabled = !isOrbitLocked;
-    uiManager.showToast('info', 'Use both hands: move together to orbit, spread or pinch to zoom.');
+    uiManager.showToast('info', 'Rotate 3D Active: Orbit with mouse/touch or use two-hand spatial gestures.');
   } else if (mode === 'WIRING') {
+    sceneManager.controls.enabled = false;
+    uiManager.showToast('info', 'Wiring Lab: 3D rotation locked for stable wiring.');
+  } else {
     sceneManager.controls.enabled = !isOrbitLocked;
   }
 });

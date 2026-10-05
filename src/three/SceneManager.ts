@@ -131,6 +131,8 @@ export class SceneManager {
   resetCameraView(): void {
     this.camera.position.set(-0.16, 0.32, 1.48);
     this.controls.target.set(-0.16, 0.22, 0);
+    this.equipmentGroup.rotation.set(0, 0, 0);
+    this.equipmentGroup.position.set(0, 0, 0);
     this.controls.update();
   }
 
