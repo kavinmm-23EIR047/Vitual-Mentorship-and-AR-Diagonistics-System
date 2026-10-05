@@ -781,6 +781,12 @@ export class UIManager {
       this.ladderLogicModal.close();
     });
 
+    EventBus.on('inspector:closed', () => {
+      if (document.getElementById('btn-mode-inspect')?.classList.contains('active')) {
+        this.setActiveModeBtn('btn-mode-wire');
+      }
+    });
+
     // Control Mode (Auto / Manual)
     document.getElementById('btn-mode-toggle')?.addEventListener('click', () => {
       EventBus.emit('control:toggleMode');
@@ -1593,7 +1599,8 @@ export class UIManager {
 
   public showToast(type: 'success' | 'error' | 'info' | 'warn', message: string): void {
     const toast = document.createElement('div');
-    toast.className = `compact-toast toast-${type === 'warn' ? 'error' : type}`;
+    // Match the toast structure and type classes defined in style.css.
+    toast.className = `feedback-toast ${type === 'warn' ? 'error' : type}`;
     const icon = type === 'success' ? Icons.checkCircle({ size: 14 }) : type === 'error' || type === 'warn' ? Icons.alertTriangle({ size: 14 }) : Icons.info({ size: 14 });
     toast.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-msg">${message}</span>`;
 
